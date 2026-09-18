@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+}
+
+.page {
+  --turf: #1f2041;
+  --turf-panel: #292a52;
+  --turf-panel-2: #4b3f72;
+  --hash: #3a3a63;
+  --chalk: #f4f2ea;
+  --chalk-dim: #8babe4;
+  --gold: #ffc857;
+  --gold-dim: #19647e;
+  --pos-green: #3fb950;
+  --neg-red: #f85149;
+  font-family: 'Inter', sans-serif;
+  background: var(--turf);
+  color: var(--chalk);
+  min-height: 100vh;
+}
+
+.menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--turf-panel);
+  border: 1px solid var(--hash);
+  color: var(--chalk);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.menu-btn:hover {
+  border-color: var(--gold-dim);
+}
+
+.section-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--chalk-dim);
+  margin-bottom: 0.6rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--chalk-dim);
+}
+
+.table-scroll {
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid var(--hash);
+  border-radius: 10px;
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+thead th {
+  text-align: left;
+  padding: 0.95rem 0.75rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chalk-dim);
+  border-bottom: 2px solid var(--hash);
+  background: var(--turf);
+  cursor: pointer;
+  user-select: none;
+  white-space: normal;
+  vertical-align: bottom;
+  line-height: 1.25;
+}
+
+.th-right { text-align: right; }
+
+.th-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.th-arrow {
+  font-size: 0.6rem;
+  opacity: 0.4;
+}
+
+.th-arrow-active {
+  opacity: 1;
+  color: var(--gold);
+}
+
+select.filter {
+  background: var(--turf-panel);
+  border: 1px solid var(--hash);
+  border-radius: 6px;
+  padding: 0.7rem 1rem;
+  color: var(--chalk);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
+select.filter:focus { border-color: var(--gold-dim); }
