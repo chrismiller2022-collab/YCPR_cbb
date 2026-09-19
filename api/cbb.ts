@@ -198,6 +198,135 @@ export default async function handler(req: any, res: any) {
   }
 
   // -----------------------------------------------------------------
+  // action: "scrapedProxy" — three sources confirmed scrapable via a
+  // plain server-side fetch (no bot-block, no JS-rendered data):
+  //   - TeamRankings' own Predictive rating page (server-rendered table)
+  //   - D-Ratings' NCAA ratings page (Standard + Inference columns)
+  //   - Wilson's ratings, hosted at talismanred.com (NOT masseyratings.com
+  //     — Wilson has his own page there, confirmed live)
+  // Massey/Massey Composite (Cloudflare-walled), Bart Torvik (JS
+  // verification wall), Haslametrics (ships an empty table skeleton,
+  // populated by JS with no visible data endpoint), and ESPN BPI (blocks
+  // plain fetches outright) were all checked and are NOT scrapable this
+  // way — don't add them here without a real headless-browser approach.
+  //
+  // Raw parsed data only, same as CBBD teams/ratings above — matching
+  // against cbb_teams (mascot-suffixed names for D-Ratings need the
+  // matcher's matchSchoolMascotName) and saving happens client-side.
+  // -----------------------------------------------------------------
+  if (action === "scrapedProxy") {
+    try {
+      const [trHtml, drHtml, wilHtml] = await Promise.all([
+        fetch("https://www.teamrankings.com/ncaa-basketball/ranking/predictive-by-other", {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" },
+        }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`TeamRankings fetch failed (${r.status})`)))),
+        fetch("https://www.dratings.com/sports/ncaa-college-basketball-ratings/", {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" },
+        }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`D-Ratings fetch failed (${r.status})`)))),
+        fetch("https://talismanred.com/ratings/hoops/rankings2.shtml", {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" },
+        }).then((r) => (r.ok ? r.text() : Promise.reject(new Error(`Wilson (TalismanRed) fetch failed (${r.status})`)))),
+      ]);
+
+      // TeamRankings: <td class="nowrap" data-sort="TEAM">...</td> for
+      // the team cell (clean name, no need to strip the "(W-L)" suffix
+      // shown in the link text), then the third <td> is the rating.
+      function parseTeamRankings(html: string): { team: string; value: number }[] {
+        const out: { team: string; value: number }[] = [];
+        const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let rowMatch: RegExpExecArray | null;
+        while ((rowMatch = rowRe.exec(html))) {
+          const row = rowMatch[1];
+          const teamMatch = row.match(/class="nowrap" data-sort="([^"]+)"/);
+          if (!teamMatch) continue;
+          const cells: string[] = [];
+          const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+          let cellMatch: RegExpExecArray | null;
+          while ((cellMatch = cellRe.exec(row))) cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
+          if (cells.length < 3) continue;
+          const value = parseFloat(cells[2]);
+          if (!Number.isNaN(value)) out.push({ team: teamMatch[1], value });
+        }
+        return out;
+      }
+
+      // D-Ratings: 7 <td> per row — team (inside an <a>, "School
+      // Mascot" format, e.g. "Michigan Wolverines"), Overall, Change,
+      // SOS, Standard, Inference, Vegas. Each of the last four cells
+      // carries a trailing "(rank)" badge after the number.
+      function parseDRatings(html: string): { team: string; standard: number; inference: number }[] {
+        const out: { team: string; standard: number; inference: number }[] = [];
+        const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let rowMatch: RegExpExecArray | null;
+        while ((rowMatch = rowRe.exec(html))) {
+          const row = rowMatch[1];
+          const teamMatch = row.match(/<a[^>]*>([^<]+)<\/a>/);
+          if (!teamMatch) continue;
+          const cells: string[] = [];
+          const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+          let cellMatch: RegExpExecArray | null;
+          while ((cellMatch = cellRe.exec(row))) cells.push(cellMatch[1].replace(/<[^>]+>/g, " ").trim());
+          if (cells.length < 6) continue;
+          const standard = parseFloat(cells[4]);
+          const inference = parseFloat(cells[5]);
+          if (!Number.isNaN(standard) && !Number.isNaN(inference)) {
+            out.push({ team: teamMatch[1].trim(), standard, inference });
+          }
+        }
+        return out;
+      }
+
+      // Wilson (talismanred.com): plain <td> cells, team name already
+      // bare (no mascot suffix) — Rank, Team, W, L, Rating, ...
+      function parseWilson(html: string): { team: string; value: number }[] {
+        const out: { team: string; value: number }[] = [];
+        const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+        let rowMatch: RegExpExecArray | null;
+        while ((rowMatch = rowRe.exec(html))) {
+          const row = rowMatch[1];
+          const cells: string[] = [];
+          const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+          let cellMatch: RegExpExecArray | null;
+          while ((cellMatch = cellRe.exec(row))) cells.push(cellMatch[1].replace(/<[^>]+>/g, "").trim());
+          if (cells.length < 5 || !/^\d+$/.test(cells[0])) continue; // header/section rows
+          const value = parseFloat(cells[4]);
+          if (cells[1] && !Number.isNaN(value)) out.push({ team: cells[1], value });
+        }
+        return out;
+      }
+
+      const trRows = parseTeamRankings(trHtml);
+      const drRows = parseDRatings(drHtml);
+      const wilRows = parseWilson(wilHtml);
+      if (trRows.length === 0 && drRows.length === 0 && wilRows.length === 0) {
+        throw new Error("Parsed 0 rows from all three sources — a page layout may have changed");
+      }
+
+      const byTeam = new Map<string, { team: string; values: Record<string, number> }>();
+      function upsert(team: string, key: string, value: number) {
+        const existing = byTeam.get(team) ?? { team, values: {} };
+        existing.values[key] = value;
+        byTeam.set(team, existing);
+      }
+      for (const r of trRows) upsert(r.team, "teamrankings", r.value);
+      for (const r of drRows) {
+        upsert(r.team, "dratings_standard", r.standard);
+        upsert(r.team, "dratings_inference", r.inference);
+      }
+      for (const r of wilRows) upsert(r.team, "wilson", r.value);
+
+      res.status(200).json({
+        ok: true,
+        rows: Array.from(byTeam.values()),
+        counts: { teamrankings: trRows.length, dratings: drRows.length, wilson: wilRows.length },
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message ?? "Scraped ratings fetch failed" });
+    }
+    return;
+  }
+
+  // -----------------------------------------------------------------
   // action: "save" — generic save for any non-CBBD-API system (Massey
   // CSV upload, and whatever gets added after it). Matching against
   // cbb_teams happens client-side (src/lib/cbbTeamNameMatch.ts), same

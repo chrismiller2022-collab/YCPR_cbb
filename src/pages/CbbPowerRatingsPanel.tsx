@@ -9,6 +9,7 @@ import {
   syncCbbTeams,
   syncCbbdRatings,
   saveCbbRatingRows,
+  fetchScrapedCbbRatings,
   type CbbTeamRow,
   type CbbRatingPullRow,
 } from "../lib/api/cbbData";
@@ -96,6 +97,39 @@ function SyncControls({ onDataChanged }: { onDataChanged: () => void }) {
     }
   }
 
+  async function handleSyncScraped() {
+    setBusy("scraped");
+    setLog(null);
+    try {
+      const { rows: scraped, counts } = await fetchScrapedCbbRatings();
+      if (scraped.length === 0) {
+        setLog("Parsed 0 rows from all three sources — a page layout may have changed.");
+        return;
+      }
+      const teams = await fetchCbbTeams();
+      const matcher = createCbbTeamMatcher(teams.map((t) => t.school));
+      const teamConfByName = new Map(teams.map((t) => [t.school, t.conference]));
+      const matchedRows: { team: string; conference: string | null; values: Record<string, number> }[] = [];
+      const unmatchedNames: string[] = [];
+      for (const r of scraped) {
+        const canonical = matcher.matchSchoolMascotName(r.team);
+        if (canonical) matchedRows.push({ team: canonical, conference: teamConfByName.get(canonical) ?? null, values: r.values });
+        else unmatchedNames.push(r.team);
+      }
+      const result = await saveCbbRatingRows(matchedRows);
+      setLog(
+        `Scraped ratings — TeamRankings ${counts.teamrankings}, D-Ratings ${counts.dratings}, Wilson ${counts.wilson} parsed; ` +
+          `matched ${matchedRows.length}/${scraped.length} rows, saved ${result.saved} values.${formatDiffNote(result.bySystem)}`
+      );
+      setUnmatched(unmatchedNames.length > 0 ? { source: "Scraped ratings", names: unmatchedNames } : null);
+      onDataChanged();
+    } catch (err: any) {
+      setLog(err.message ?? "Scraped ratings sync failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div style={{ border: "1px solid var(--hash)", borderRadius: 8, padding: "0.9rem 1rem", marginBottom: "1.25rem" }}>
       <div className="section-label" style={{ marginBottom: "0.6rem" }}>
@@ -111,6 +145,9 @@ function SyncControls({ onDataChanged }: { onDataChanged: () => void }) {
         </label>
         <button className="menu-btn" onClick={handleSyncCbbdRatings} disabled={busy != null}>
           {busy === "cbbd" ? "Syncing…" : "Sync CBBD Ratings (SRS + Elo)"}
+        </button>
+        <button className="menu-btn" onClick={handleSyncScraped} disabled={busy != null} title="TeamRankings Predictive, D-Ratings (Standard/Inference), Wilson">
+          {busy === "scraped" ? "Syncing…" : "Sync Scraped (TR / D-Ratings / Wilson)"}
         </button>
         <label className="menu-btn" style={{ cursor: "pointer" }}>
           {busy === "massey" ? "Uploading…" : "Upload Massey CSV"}

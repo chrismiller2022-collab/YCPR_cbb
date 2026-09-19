@@ -109,5 +109,21 @@ export function createCbbTeamMatcher(canonicalSchools: string[]) {
     return { matched, unmatched };
   }
 
-  return { matchTeamName, matchTeamRows };
+  // Some sources (D-Ratings) give "School Mascot" instead of just the
+  // school name (e.g. "Michigan Wolverines") — same problem the CFB
+  // matcher's matchSchoolMascotName solves, same fix: try the string as
+  // given first, then progressively drop trailing words, since the
+  // canonical name is almost always a strict prefix of the full form.
+  function matchSchoolMascotName(input: string): string | null {
+    let result = matchTeamName(input);
+    if (result.matched) return result.matched;
+    const words = input.split(" ");
+    for (let cut = 1; cut <= 2 && words.length - cut >= 1; cut++) {
+      result = matchTeamName(words.slice(0, words.length - cut).join(" "));
+      if (result.matched) return result.matched;
+    }
+    return null;
+  }
+
+  return { matchTeamName, matchTeamRows, matchSchoolMascotName };
 }

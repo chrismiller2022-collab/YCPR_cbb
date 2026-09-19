@@ -61,6 +61,17 @@ export function syncCbbdRatings(season: number) {
   return authedPost("syncCbbdRatings", { season });
 }
 
+export interface ScrapedCbbRow {
+  team: string;
+  values: Record<string, number>;
+}
+
+/** TeamRankings Predictive + D-Ratings (Standard/Inference) + Wilson (talismanred.com) — the three confirmed-scrapable sources. Raw team names as each site spells them; matching against cbb_teams happens client-side. */
+export async function fetchScrapedCbbRatings(): Promise<{ rows: ScrapedCbbRow[]; counts: Record<string, number> }> {
+  const data = await authedPost("scrapedProxy", {});
+  return { rows: data.rows as ScrapedCbbRow[], counts: data.counts as Record<string, number> };
+}
+
 export interface CbbRatingSaveRow {
   team: string;
   conference?: string | null;
