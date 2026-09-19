@@ -53,8 +53,8 @@ function authedPost(action: string, body: Record<string, any>) {
   });
 }
 
-export function syncCbbTeams() {
-  return authedPost("syncTeams", {});
+export function syncCbbTeams(season: number) {
+  return authedPost("syncTeams", { season });
 }
 
 export function syncCbbdRatings(season: number) {

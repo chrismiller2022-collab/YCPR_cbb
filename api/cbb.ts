@@ -72,24 +72,49 @@ export default async function handler(req: any, res: any) {
   // action: "syncTeams" — pulls CBBD's own team list (the canonical
   // roster every other system's team names get matched against — see
   // src/lib/cbbTeamNameMatch.ts) plus each team's current conference.
-  // No FBS/FCS-style division split here — CBBD's /teams is already
-  // just the D1 field, unlike CFBD which mixes FBS and FCS.
+  // No FBS/FCS-style division split here — CBBD's /teams FILTERED BY
+  // SEASON is already just the current D1 field (364 teams, verified).
+  //
+  // Bug fixed here: /teams with NO season param returns CBBD's entire
+  // historical roster across every division it has ever tracked
+  // (1500+ teams — D1, D2, D3, NAIA, disbanded programs, the works),
+  // not just this season's D1 slate. That set has real duplicate
+  // `school` values (mostly small D3 schools CBBD has two historical
+  // entries for, e.g. "Holy Cross" under two different ids), which the
+  // whole batch upsert then failed on outright (Postgres rejects the
+  // entire upsert on any single unique-constraint violation — nothing
+  // landed, not even the valid rows). Scoping to ?season= fixes this at
+  // the source; the dedupe-by-school below is a second line of defense
+  // in case CBBD ever reintroduces a dup within one season's own list.
   // -----------------------------------------------------------------
   if (action === "syncTeams") {
     if (!CBBD_API_KEY) {
       res.status(500).json({ error: "CBBD_API_KEY is not configured on the server" });
       return;
     }
+    const { season } = req.body ?? {};
+    if (!season || typeof season !== "number") {
+      res.status(400).json({ error: "Missing or invalid 'season'" });
+      return;
+    }
     try {
-      const teams = await cbbdFetch(`/teams`);
-      const rows = (teams ?? [])
-        .filter((t: any) => t.id != null && t.school)
-        .map((t: any) => ({
+      const teams = await cbbdFetch(`/teams?season=${season}`);
+      const byId = new Map<number, any>();
+      for (const t of teams ?? []) {
+        if (t.id == null || !t.school) continue;
+        byId.set(t.id, {
           cbbd_id: t.id,
           school: t.school,
           conference: t.conference ?? null,
           updated_at: new Date().toISOString(),
-        }));
+        });
+      }
+      // Last-one-wins on `school` too — belt and suspenders against the
+      // exact failure mode above, so a stray dup degrades to "one of the
+      // two got skipped" instead of "the whole sync saved nothing."
+      const bySchool = new Map<string, any>();
+      for (const r of byId.values()) bySchool.set(r.school, r);
+      const rows = Array.from(bySchool.values());
       if (rows.length === 0) throw new Error("CBBD returned 0 teams");
 
       const { error, count } = await supabaseAdmin.from("cbb_teams").upsert(rows, { onConflict: "cbbd_id", count: "exact" });

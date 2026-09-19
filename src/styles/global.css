@@ -4,6 +4,12 @@
 
 body {
   margin: 0;
+  /* Matches .page's own --turf below — set here too so anything NOT
+     wrapped in a full-viewport .page div (the password gate is a small
+     centered box, not a full-page one) doesn't show a stark white gap
+     around it. */
+  background: #1f2041;
+  min-height: 100vh;
 }
 
 .page {

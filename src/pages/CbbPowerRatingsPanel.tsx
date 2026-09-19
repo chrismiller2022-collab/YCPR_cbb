@@ -43,7 +43,7 @@ function SyncControls({ onDataChanged }: { onDataChanged: () => void }) {
     setBusy("teams");
     setLog(null);
     try {
-      const result = await syncCbbTeams();
+      const result = await syncCbbTeams(year);
       setLog(`Teams — ${result.teamsUpserted} upserted.`);
       onDataChanged();
     } catch (err: any) {
